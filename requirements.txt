@@ -1,7 +1,0 @@
-numpy==1.10.4
-oauthlib==1.0.3
-python-twitter==2.2
-requests==2.9.1
-requests-oauthlib==0.6.0
-speedtest-cli==0.3.4
-wheel==0.29.0

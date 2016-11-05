@@ -58,8 +58,9 @@ else
     1>&2 echo "** Reusing existing results: $log"
   else
     # Query Speedtest
-    /usr/local/bin/speedtest-cli --share > $log
-    #speedtest-cli --share > $log
+    speedtest-cli --share > $log
+    #/usr/local/bin/speedtest-cli --share > $log
+    #/root/.local/bin/speedtest-cli --share > $log
   fi
 
   stop=`date +"%Y-%m-%d %H:%M:%S"`
