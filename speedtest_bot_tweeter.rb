@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 require "pathname"
 require "csv"
-require "twitter"
+require "net/http"
+require "uri"
+require "oauth"
 
 DRY_RUN = !!(ENV["DRY_RUN"] =~ /yes|true/i)
 LOG_FILE = "./daily_results.csv".freeze
@@ -14,11 +16,64 @@ def csv_options
   }
 end
 
+TWITTER_AUTH = {
+  consumer_key:        ENV.fetch("TWITTER_CONSUMER_KEY"),
+  consumer_secret:     ENV.fetch("TWITTER_CONSUMER_SECRET"),
+  access_token:        ENV.fetch("TWITTER_ACCESS_TOKEN"),
+  access_token_secret: ENV.fetch("TWITTER_TOKEN_SECRET")
+}.freeze
+
+# I run this on a device that is unusual architecture and we cannot use the Twitter gem;
+# hack with oauth lib
+class TwitterClient
+  def initialize(auth = TWITTER_AUTH)
+    @auth = auth
+  end
+
+  def post_update(message)
+    response = make_request OAuth::Helper.escape(message)
+    case response
+    when Net::HTTPSuccess then
+      true
+    # when Net::HTTPRedirection, Net::HTTPForbidden then
+    #   puts response
+    #   false
+    else
+      puts response
+      false
+    end
+  end
+
+  private
+
+  def make_request(encoded_message)
+    access_token.request(
+      :post,
+      "https://api.twitter.com/1.1/statuses/update.json?status=#{encoded_message}"
+    )
+  end
+
+  def access_token
+    @_access_token ||= begin
+      consumer = OAuth::Consumer.new(
+        TWITTER_AUTH[:consumer_key], TWITTER_AUTH[:consumer_secret],
+        site: "https://api.twitter.com", scheme: :header
+      )
+
+      token_hash = {
+        oauth_token: TWITTER_AUTH[:access_token],
+        oauth_token_secret: TWITTER_AUTH[:access_token_secret]
+      }
+      OAuth::AccessToken.from_hash(consumer, token_hash)
+    end
+  end
+end
+
 Tweet = Struct.new(:text) do
   MAX_TWEET_LEN = 140
 
   def post!
-    client.update(to_s)
+    client.post_update(to_s)
   end
 
   def valid?
@@ -32,12 +87,7 @@ Tweet = Struct.new(:text) do
   private
 
   def client
-    @_client ||= Twitter::REST::Client.new do |config|
-      config.consumer_key        = ENV.fetch("TWITTER_CONSUMER_KEY")
-      config.consumer_secret     = ENV.fetch("TWITTER_CONSUMER_SECRET")
-      config.access_token        = ENV.fetch("TWITTER_ACCESS_TOKEN")
-      config.access_token_secret = ENV.fetch("TWITTER_TOKEN_SECRET")
-    end
+    @_client ||= TwitterClient.new
   end
 end
 
@@ -52,6 +102,7 @@ TWEET_KLASS = Tweet
 ResultTriple = Struct.new(:ping, :download, :upload) do
   # if we have any values here then parse to a float, invalid types will end up
   # as 0.0 which is what we want; any result is therefore >= 0.0
+  # This is probably not correct for the latency but not sure what else to do atm.
   def self.parse_row(row)
     new(
       *row.map(&:to_f)
@@ -84,9 +135,7 @@ class SpeedTestResultsSet
   end
 
   def add_result(result_row)
-    if row_has_all_parts?(result_row)
-      @results << ResultTriple.parse_row(result_row)
-    end
+    @results << ResultTriple.parse_row(result_row) if row_has_all_parts?(result_row)
   end
 
   def valid?
@@ -106,9 +155,10 @@ class SpeedTestResultsSet
 
   private
 
-  # Ensure values are not nil and 3
+  # When the broadband is down, a row of `;;` is written so we treat this as
+  # valid so no connection influences averages correctly.
   def row_has_all_parts?(row)
-    row && Array(row).compact.size == 3
+    row && row.size == 3
   end
 
   def ping_results
