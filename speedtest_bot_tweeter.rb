@@ -23,6 +23,8 @@ TWITTER_AUTH = {
   access_token_secret: ENV.fetch("TWITTER_TOKEN_SECRET")
 }.freeze
 
+ANNOY_ISP_DL_THRESHOLD = 40.0
+
 # I run this on a device that is unusual architecture and we cannot use the Twitter gem;
 # hack with oauth lib
 class TwitterClient
@@ -97,8 +99,6 @@ class BroadbandProviderTweet < Tweet
   end
 end
 
-TWEET_KLASS = Tweet
-
 ResultTriple = Struct.new(:ping, :download, :upload) do
   # if we have any values here then parse to a float, invalid types will end up
   # as 0.0 which is what we want; any result is therefore >= 0.0
@@ -153,6 +153,18 @@ class SpeedTestResultsSet
     @results.map(&:to_s)
   end
 
+  def ping_average
+    calculate_mean_average(ping_results)
+  end
+
+  def download_average
+    calculate_mean_average(download_results)
+  end
+
+  def upload_average
+    calculate_mean_average(upload_results)
+  end
+
   private
 
   # When the broadband is down, a row of `;;` is written so we treat this as
@@ -173,18 +185,6 @@ class SpeedTestResultsSet
     @results.map(&:upload)
   end
 
-  def ping_average
-    calculate_mean_average(ping_results)
-  end
-
-  def download_average
-    calculate_mean_average(download_results)
-  end
-
-  def upload_average
-    calculate_mean_average(upload_results)
-  end
-
   def calculate_mean_average(results_to_calculate)
     Float(
       results_to_calculate.inject(:+) / results_to_calculate.size
@@ -193,7 +193,11 @@ class SpeedTestResultsSet
 end
 
 def post(results_set)
-  tweet = TWEET_KLASS.new(results_set.to_display)
+  if results_set.download_average < ANNOY_ISP_DL_THRESHOLD
+    tweet = BroadbandProviderTweet.new(results_set.to_display)
+  else
+    tweet = Tweet.new(results_set.to_display)
+  end
 
   if DRY_RUN
     puts tweet
@@ -220,7 +224,7 @@ def main
     abort "Results #{results_set.to_s} not valid"
   end
 rescue => error
-  abort error
+  abort error.message
 ensure
   log_file.delete unless DRY_RUN
 end
