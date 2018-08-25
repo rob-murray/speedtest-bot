@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 ###########################################################################
 # Originally written by: Henrik Bengtsson, 2014
 # https://github.com/HenrikBengtsson/speedtest-cli-extras
