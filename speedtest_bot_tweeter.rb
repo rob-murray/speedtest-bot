@@ -7,15 +7,12 @@ require "oauth"
 
 DRY_RUN = !!(ENV["DRY_RUN"] =~ /yes|true/i)
 LOG_FILE = "./daily_results.csv".freeze
-def csv_options
-  {
-    col_sep: ";",
-    headers: false,
-    skip_blanks: false,
-    encoding: "utf-8"
-  }
-end
-
+CSV_OPTIONS = {
+  col_sep: ";",
+  headers: false,
+  skip_blanks: false,
+  encoding: "utf-8"
+}
 TWITTER_AUTH = {
   consumer_key:        ENV.fetch("TWITTER_CONSUMER_KEY"),
   consumer_secret:     ENV.fetch("TWITTER_CONSUMER_SECRET"),
@@ -23,7 +20,39 @@ TWITTER_AUTH = {
   access_token_secret: ENV.fetch("TWITTER_TOKEN_SECRET")
 }.freeze
 
-ANNOY_ISP_DL_THRESHOLD = 40.0
+class IspConfig
+  def all_details_present?
+    twitter_account && advertised_download_speed && advertised_download_speed > 0.0
+  end
+
+  def twitter_account
+    ENV["ISP_TWITTER_ACC"]
+  end
+
+  def minimum_download_speed
+    return Float::INFINITY unless all_details_present?
+    advertised_download_speed - (advertised_download_speed * (slow_download_threshold_percentage / 100))
+  end
+
+  def advertised_download_speed
+    Float(ENV["ISP_STATED_DL_SPEED"])
+  rescue ArgumentError
+    nil
+  end
+
+  def slow_download_threshold_percentage
+    Float(ENV["ISP_SLOW_DL_THRESHOLD_PC"])
+  rescue ArgumentError
+    20.0
+  end
+
+  def to_s
+    <<~STR
+      <IspConfig twitter_account=#{twitter_account} minimum_download_speed=#{minimum_download_speed} advertised_download_speed=#{advertised_download_speed} slow_download_threshold_percentage=#{slow_download_threshold_percentage}>
+    STR
+  end
+end
+
 
 # I run this on a device that is unusual architecture and we cannot use the Twitter gem;
 # hack with oauth lib
@@ -72,7 +101,7 @@ class TwitterClient
 end
 
 Tweet = Struct.new(:text) do
-  MAX_TWEET_LEN = 140
+  MAX_TWEET_LEN = 280
 
   def post!
     client.post_update(to_s)
@@ -94,8 +123,17 @@ Tweet = Struct.new(:text) do
 end
 
 class BroadbandProviderTweet < Tweet
+  def initialize(isp_details, text)
+    @isp_details = isp_details
+    super(text)
+  end
+
   def to_s
-    "My @virginmedia avg broadband speeds over the past 24 hrs are #{text}. From SpeedTestBot"
+    <<~TWEET
+      My @#{@isp_details.twitter_account} average broadband speeds over the past 24 hrs are #{text}.
+      I pay for a #{@isp_details.advertised_download_speed} Mbit/s download speed - something isn't right here.
+      From SpeedTestBot
+    TWEET
   end
 end
 
@@ -124,7 +162,7 @@ end
 class SpeedTestResultsSet
   def self.from_csv(file)
     results_set = new
-    CSV.foreach(file, csv_options) do |row|
+    CSV.foreach(file, CSV_OPTIONS) do |row|
       results_set.add_result row
     end
     results_set
@@ -193,19 +231,28 @@ class SpeedTestResultsSet
 end
 
 def post(results_set)
-  if results_set.download_average < ANNOY_ISP_DL_THRESHOLD
-    tweet = BroadbandProviderTweet.new(results_set.to_display)
+  isp_details = IspConfig.new
+  if isp_details.all_details_present? && results_set.download_average < isp_details.minimum_download_speed
+    tweet = BroadbandProviderTweet.new(isp_details, results_set.to_display)
   else
     tweet = Tweet.new(results_set.to_display)
   end
 
   if DRY_RUN
-    puts tweet
+    puts "DRY_RUN..."
+    puts <<~OUT
+      <tweet>
+      #{tweet}
+      </tweet>
+    OUT
+    puts "Created using #{tweet.class.name}"
+    puts "ISP config: #{isp_details.to_s}"
   else
     if tweet.valid?
       tweet.post!
       puts "Posted Tweet!"
     else
+      puts "tweet=#{tweet}"
       abort "Tweet is not valid!"
     end
   end
