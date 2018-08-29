@@ -131,7 +131,7 @@ class BroadbandProviderTweet < Tweet
   def to_s
     <<~TWEET
       My @#{@isp_details.twitter_account} average broadband speeds over the past 24 hrs are #{text}.
-      I pay for a #{@isp_details.advertised_download_speed} Mbit/s download speed - something isn't right here.
+      I pay for a #{@isp_details.advertised_download_speed.round} Mbit/s download speed - something isn't right here.
       From SpeedTestBot
     TWEET
   end
