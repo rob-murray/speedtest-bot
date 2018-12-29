@@ -1,8 +1,8 @@
 # SpeedTest Bot
 
-Automatic SpeedTest bot that collects and tweets daily broadband speed stats.
+Automatic SpeedTest bot that collects and tweets daily broadband speed stats. I run this on a Raspberry Pi to collect data on how my broadband is performing.
 
-A collection of code that might work. YMMV - you may have to edit some stuff if you want to do something different.
+⚠️ A collection of code that might work. YMMV - you may have to edit some stuff if you want to do something different.
 
 Speed data via [speedtest.net](http://speedtest.net) using [speedtest-cli](https://github.com/sivel/speedtest-cli)
 
@@ -55,7 +55,7 @@ If you include some details about your ISP then when the daily average download 
 |---|---|---|
 | `ISP_TWITTER_ACC` | The Twitter account for your ISP | `virginmedia`  |
 | `ISP_STATED_DL_SPEED` | The advertised download speed you pay for | `50` would be 50 Mbit/s |
-| `ISP_SLOW_DL_THRESHOLD_PC` | The percentage value below the advertised download speed that will trigger them to be tagged | `20` for 20% - this is the default |
+| `ISP_SLOW_DL_THRESHOLD_PC` | The percentage value below the advertised download speed that will trigger the Tweet to be tagged with your ISP account | `20` for 20% - this is the default |
 
 #### Automating
 
